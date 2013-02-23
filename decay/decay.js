@@ -37,11 +37,59 @@
 		this.init.apply(this, arguments);
 	};
 	Landscape.prototype = {
+		xSquares: 60,
+		ySquares: 60,
 		init: function () {
 			var land = this,
-				geometry = new THREE.PlaneGeometry(600, 600, 100, 100);
+				geometry = new THREE.PlaneGeometry(600, 600, land.xSquares, land.ySquares),
+				material = new THREE.MeshLambertMaterial({
+					color: 0xCC0000
+				}),
+				object = new THREE.Mesh(geometry, material);
+			
+			object.rotation.x = 30;
 			
 			land.object = object;
+			land.createPositionMatrix();
+			
+			// Now everything is ready.
+		},
+		createPositionMatrix: function () {
+			var land = this,
+				geometry = land.object.geometry,
+				vertices = geometry.vertices,
+				positionMatrix = [],
+				x = 0,
+				y = 0;
+			
+			_.each(vertices, function (vertex, i) {
+				if (i > ((x+1) * land.xSquares)) {
+					x += 1;
+					y = 0;
+				}
+				
+				if (!positionMatrix[x]) {
+					positionMatrix[x] = [];
+				}
+				positionMatrix[x][y] = vertex;
+				
+				y += 1;
+			});
+			
+			land.positionMatrix = positionMatrix;
+		},
+		/**
+		* set height usage examples
+		   land.setHeight([30,30], 500);
+		   land.setHeight([60,30], 500);
+	   */
+		setHeight: function (point, height) {
+			var land = this;
+			if (!land.positionMatrix) {
+				land.createPositionMatrix();
+			}
+			// z is height because it's rotated 30 degrees around the x axis
+			land.positionMatrix[ point[0] ][ point[1] ].z = height;
 		}
 	};
 	
@@ -62,7 +110,7 @@
 	
 	scene.add(camera);
 	
-	camera.position.z = 300;
+	camera.position.z = 800;
 	renderer.setSize(WIDTH, HEIGHT);
 	
 	container.appendChild(renderer.domElement);
