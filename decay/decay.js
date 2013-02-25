@@ -1,5 +1,194 @@
 (function () {
 	
+	
+	var LSystemTree= function(){
+		this.init.apply(this, arguments);
+	}
+	
+	LSystemTree.prototype = {
+		init: function(){
+			
+			// var material = new THREE.MeshLambertMaterial({
+			// 	color: 0xCC0000
+			// });
+			
+			var texture = THREE.ImageUtils.loadTexture( "/decay/bark.jpg" );
+			var material = new THREE.MeshBasicMaterial({ map: texture } );
+
+			var meshes = [];
+			this.meshes = meshes;
+			
+			var frac = new lSystem.LSystem ( 'X', {'X' : 'F-[[X]+X]+F[+FX]-X', 'F' : 'FF'} );
+			console.log( frac.generate(4) );
+			
+			hfrac = new lSystem.LRunHandler({
+				a:90,	// starting angle
+				x:0,	// starting x
+				y:0, 	// starting y
+				r:5,	// radius
+				raMap:{},	// radius-angle map/cache 
+				stack:[]  	// stack for tree
+			});
+
+			/**
+			 * Specify conditions. State functions
+			 */
+			hfrac.on( 'F', function() {
+				
+
+				var startPoint = new THREE.Vector3( this.x, this.y, 0 );
+				// cache angle values
+				// If the angles are repeated(highly likely),
+				// it will reuse existing calculations
+				// to preserve the decimal approximation.
+				hash = this.r + '#' + this.a;
+				if( typeof this.raMap[hash] == 'undefined' ) {
+					this.raMap[hash] = {
+						x : Math.round( 2 * this.r * Math.cos( this.a * Math.PI/180 ) ),
+						y : Math.round( 2 * this.r * Math.sin( this.a * Math.PI/180 ) )
+					};
+				}
+				this.x += this.raMap[hash].x;
+				this.y += this.raMap[hash].y;
+				
+				
+				
+				var endPoint = new THREE.Vector3( this.x, this.y, 0 );
+				
+				var lineLength = endPoint.sub( startPoint ).length();
+				
+				//var matrix = new THREE.Matrix4().translate( startPoint ).rotateZ( this.a * Math.PI/180 );
+				
+				var matrix = new THREE.Matrix4().translate( startPoint ).rotateZ( Math.PI/2 + this.a * Math.PI/180 );
+				
+				var startR = this.r;
+				this.r = 0.95 * startR;
+				var geometry = new THREE.CylinderGeometry(startR,this.r, lineLength, 16 );
+				geometry.applyMatrix( matrix );
+				console.log( startPoint.x, startPoint.y, lineLength );
+				var mesh = new THREE.Mesh( geometry, material );
+				
+				meshes.push( mesh );
+			});
+			hfrac.on( '+', function() { this.a += 25; });
+			hfrac.on( '-', function() { this.a -= 25; });
+			hfrac.on( '[', function() { this.stack.push({ x:this.x, y:this.y, a:this.a, r: this.r }); });
+			hfrac.on( ']', function() {
+				var ls = this.stack.pop();
+				this.x = ls.x;
+				this.y = ls.y;
+				this.a = ls.a;
+				this.r = ls.r;
+			});
+			
+			frac.run( hfrac);
+			
+		}
+	}
+	
+	var GrassyPlain = function(){
+		this.init.apply(this, arguments);		
+	};
+	GrassyPlain.prototype = {
+		levels: [],
+		stalks: 1000,
+		globalAlpha: 0.075,
+		interLevelDistance: 0.25,
+		numLevels: 15,
+		moviness: 0.1,
+		healthiness: 1,
+		healthDecayPerFrame: (0.1 * 0.017),
+		init: function(){
+			
+			function generateTextureBase() {
+				var canvas = document.createElement( 'canvas' );
+				canvas.width = 512;
+				canvas.height = 512;
+
+				var context = canvas.getContext( '2d' );
+
+				for ( var i = 0; i < this.stalks; i ++ ) {
+
+					//context.fillStyle = 'rgba(0,' + Math.floor( Math.random() * 64 + 32 ) + ',16,1)';
+					
+					var grayness = Math.floor( Math.random()*10 +100 ) ;
+					context.fillStyle = 'rgba(' + grayness + "," + grayness + ","  + grayness + ',1)';
+					
+					context.beginPath();
+					context.arc( Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 1 + 0.5, 0, Math.PI * 2, true );
+					context.closePath();
+					context.fill();
+
+				}
+
+				context.globalAlpha = this.globalAlpha;
+				context.globalCompositeOperation = 'lighter';
+
+				return canvas;
+			}
+
+			function generateTextureLevel( texture ) {
+				texture.getContext( '2d' ).drawImage( texture, 0, 0 );
+				var canvas = document.createElement( 'canvas' );
+				canvas.width = texture.width;
+				canvas.height = texture.height;
+
+				canvas.getContext( '2d' ).drawImage( texture, 0, 0 );
+
+				return canvas;
+			}
+		
+			var geometry = new THREE.CircleGeometry( 50, 25 );
+
+			var bitmap = generateTextureBase.call( this );
+
+			for ( var i = 0; i < this.numLevels ; i ++ ) {
+
+				mesh = this.levels[ i ] = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( { map: new THREE.Texture( generateTextureLevel( bitmap ) ), transparent: true, depthWrite: false, depthTest: false } ) );
+				mesh.material.map.needsUpdate = true;
+
+				mesh.position.y = i * this.interLevelDistance;
+				mesh.rotation.x = - Math.PI / 2;
+			}
+			
+			//this.meshes.push( mesh );
+		},
+		
+		render: function(){
+				var time = Date.now() / 6000;
+
+				this.healthiness = this.healthiness - this.healthDecayPerFrame;
+				this.healthiness = Math.max( 0, Math.min( 1,  this.healthiness  ) );
+				
+				if ( this.healthiness > 0.5 ){
+					this.moviness = 20
+				} else if ( this.healthiness > 0.2 ){
+					this.moviness = 5
+				} else if ( this.healthiness > 0.1 ){
+					this.moviness = 1
+				} else {
+					this.moviness = 0.5;
+				}
+				
+				this.moviness = 2;
+				
+				for ( var i = 0, l = this.levels.length; i < l; i ++ ) {
+
+					mesh = this.levels[ i ];
+					mesh.position.x = Math.sin( time * 2 * this.moviness ) * i * i * 0.005;
+					mesh.position.z = Math.cos( time * 3 * this.moviness ) * i * i * 0.005;
+
+					mesh.material.color.g = 1;
+					
+					
+					mesh.material.color.b = 1 - this.healthiness;
+					mesh.material.color.r = 1 - this.healthiness;
+
+				}
+//				renderer.render( scene, camera );			
+		}
+	};
+	
 	/**
 	 * Base plant class
 	 */
@@ -108,21 +297,50 @@
 		
 		scene = new THREE.Scene();
 	
+	
+	renderer.sortObjects = false;
+	
 	scene.add(camera);
 	
-	camera.position.z = 800;
+	
+	camera.position.set( 0, 100,200 );
+	camera.lookAt(new THREE.Vector3(0,100,0));
+	
+	
+//correct for red plane:
+//	camera.position.set(  0, 75,  800 );
+	
+//correct for grass:	
+//	camera.position.set( 0, 70, 100 );
+//	camera.lookAt(new THREE.Vector3(0,0,0));
+	
 	renderer.setSize(WIDTH, HEIGHT);
 	
 	container.appendChild(renderer.domElement);
 	
+
+	document.onmousedown =  function(){
+		console.log( 'restoring healthiness') ;
+		grassyPlain.healthiness = 1;
+	};
 	
 	// and add some elements
 	var plant = new Plant();
-	scene.add(plant.object);
+	//scene.add(plant.object);
 	
-	var land = new Landscape();
-	scene.add(land.object);
+	//var land = new Landscape();
+	//scene.add(land.object);
 	
+	grassyPlain = new GrassyPlain();
+	// grassyPlain.levels.map( function(level) {
+	// 	scene.add(level);
+	// });
+
+	var lSystemTree = new LSystemTree();
+	lSystemTree.meshes.map( function(mesh) {
+		scene.add(mesh);
+	});
+
 	
 	// and add the lights
 	var pointLight = new THREE.PointLight(0xFFFFFF);
@@ -137,6 +355,8 @@
 		plant.object.rotation.y += 0.1;
 		plant.object.rotation.x += 0.02;
 		renderer.render(scene, camera);
+		
+		grassyPlain.render();
 		
 		requestAnimationFrame(render);
 	};
