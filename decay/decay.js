@@ -1,13 +1,38 @@
 (function () {
 	
 	
+	//http://bostandjiev.com/Content/Graphics%20class%20final/index.html
+	
+	var TreeLeaf = function(){
+		this.init.apply(this, arguments);
+	};
+	
+	TreeLeaf.leafTexture = THREE.ImageUtils.loadTexture( "/decay/leaf.jpg" );
+	
+	TreeLeaf.prototype = {
+		init: function(){
+			var material = new THREE.MeshBasicMaterial({
+				//color: 0x00CC00
+				map: TreeLeaf.leafTexture
+			});
+			
+			var geometry = new THREE.CircleGeometry( 4 );
+			this.mesh = new THREE.Mesh( geometry, material );
+		}
+	}
+	
 	var LSystemTree= function(){
 		this.init.apply(this, arguments);
 	}
 	
 	LSystemTree.prototype = {
-		init: function(){
+		init: function( config ){
+			this.startTime = new Date();
+			this.currentAddedIndex = -1;
 			
+			config.x = config.x || 0;
+			config.y = config.y || 0;
+			config.z = config.z || 0;
 			// var material = new THREE.MeshLambertMaterial({
 			// 	color: 0xCC0000
 			// });
@@ -18,13 +43,15 @@
 			var meshes = [];
 			this.meshes = meshes;
 			
+			
 			var frac = new lSystem.LSystem ( 'X', {'X' : 'F-[[X]+X]+F[+FX]-X', 'F' : 'FF'} );
-			console.log( frac.generate(4) );
+			console.log( frac.generate(3) );
 			
 			hfrac = new lSystem.LRunHandler({
 				a:90,	// starting angle
-				x:0,	// starting x
-				y:0, 	// starting y
+				x:config.x,	// starting x
+				y:config.y, 	// starting y
+				z:config.z, 	// starting z
 				r:5,	// radius
 				raMap:{},	// radius-angle map/cache 
 				stack:[]  	// stack for tree
@@ -36,7 +63,7 @@
 			hfrac.on( 'F', function() {
 				
 
-				var startPoint = new THREE.Vector3( this.x, this.y, 0 );
+				var startPoint = new THREE.Vector3( this.x, this.y, this.z );
 				// cache angle values
 				// If the angles are repeated(highly likely),
 				// it will reuse existing calculations
@@ -51,9 +78,7 @@
 				this.x += this.raMap[hash].x;
 				this.y += this.raMap[hash].y;
 				
-				
-				
-				var endPoint = new THREE.Vector3( this.x, this.y, 0 );
+				var endPoint = new THREE.Vector3( this.x, this.y, this.z );
 				
 				var lineLength = endPoint.sub( startPoint ).length();
 				
@@ -63,15 +88,14 @@
 				
 				var startR = this.r;
 				this.r = 0.95 * startR;
-				var geometry = new THREE.CylinderGeometry(startR,this.r, lineLength, 16 );
+				var geometry = new THREE.CylinderGeometry(startR,this.r, lineLength, 16,1, false );
 				geometry.applyMatrix( matrix );
-				console.log( startPoint.x, startPoint.y, lineLength );
 				var mesh = new THREE.Mesh( geometry, material );
 				
 				meshes.push( mesh );
 			});
-			hfrac.on( '+', function() { this.a += 25; });
-			hfrac.on( '-', function() { this.a -= 25; });
+			hfrac.on( '+', function() { this.a += ( 25 + Math.random()*25 ) ; });
+			hfrac.on( '-', function() { this.a -= ( 25 + Math.random()*25 ); });
 			hfrac.on( '[', function() { this.stack.push({ x:this.x, y:this.y, a:this.a, r: this.r }); });
 			hfrac.on( ']', function() {
 				var ls = this.stack.pop();
@@ -79,10 +103,33 @@
 				this.y = ls.y;
 				this.a = ls.a;
 				this.r = ls.r;
+				
+				var leaf = new TreeLeaf();
+				leaf.mesh.geometry.applyMatrix( new THREE.Matrix4( ).rotateX( Math.PI/4 ).rotateZ( Math.PI/4 )) ;
+				leaf.mesh.position.set( this.x, this.y, this.z + this.r );
+
+				meshes.push( leaf.mesh );
 			});
 			
 			frac.run( hfrac);
 			
+		},
+		render: function(){
+			// 
+			// var time = Math.floor( (this.startTime - Date.now()) / 6000 );
+			// 
+			// var index = Math.floor( time );
+			// 
+			// if ( index > this.currentAddedIndex ){
+			// 	this.currentAddedIndex = index;
+			// 	
+			// 	if ( index < this.internalMeshes.length ){
+			// 	
+			// 		meshes.push( this.internalMeshes[ index ] );
+			// 	}
+			// }
+			// 
+
 		}
 	}
 	
@@ -303,7 +350,7 @@
 	scene.add(camera);
 	
 	
-	camera.position.set( 0, 100,200 );
+	camera.position.set( 0, 100,400 );
 	camera.lookAt(new THREE.Vector3(0,100,0));
 	
 	
@@ -336,10 +383,24 @@
 	// 	scene.add(level);
 	// });
 
-	var lSystemTree = new LSystemTree();
+	var lSystemTree = new LSystemTree({ x:0, y:0, z:50 });
 	lSystemTree.meshes.map( function(mesh) {
 		scene.add(mesh);
 	});
+	
+	var lSystemTree2 = new LSystemTree({ x:20, y:0, z:0 });
+	lSystemTree2.meshes.map( function(mesh) {
+		scene.add(mesh);
+	});
+	
+	var lSystemTree3 = new LSystemTree({ x:-40, y:0, z:-10 });
+	lSystemTree3.meshes.map( function(mesh) {
+		scene.add(mesh);
+	});
+	
+	
+	//var leaf = new TreeLeaf();
+	//scene.add( leaf.mesh );
 
 	
 	// and add the lights
@@ -357,8 +418,12 @@
 		renderer.render(scene, camera);
 		
 		grassyPlain.render();
+
+		lSystemTree.render();
 		
 		requestAnimationFrame(render);
+		
+
 	};
 	requestAnimationFrame(render);
 }());
