@@ -1,5 +1,40 @@
 (function () {
 	
+	function getHeightData(imgSrc, imgWidth, imgHeight, cb) {
+		var img = new Image(),
+			canvas = document.createElement( 'canvas' ),
+			i, j, n;
+		
+		img.src = imgSrc;
+		document.body.appendChild(img);
+		img.onload = function () {
+			
+			canvas.width = imgWidth;
+			canvas.height = imgHeight;
+			
+			document.body.appendChild(canvas);
+			
+			var context = canvas.getContext( '2d' ),
+				size = imgWidth * imgHeight,
+				data = new Float32Array( size );
+		
+			context.drawImage(img,0,0);
+			
+			for ( i = 0; i < size; i ++ ) {
+				data[i] = 0;
+			}
+		
+			var imgd = context.getImageData(0, 0, imgWidth, imgHeight),
+				pix = imgd.data;
+		
+			for (j=0, i=0, n = pix.length; i < n; i += (4)) {
+				var all = pix[i]+pix[i+1]+pix[i+2];
+				data[j++] = all/30;
+			}
+			cb(data);
+		};
+	}
+	
 	/**
 	 * Base plant class
 	 */
@@ -7,7 +42,7 @@
 		this.init.apply(this, arguments);
 	};
 	Plant.prototype = {
-		decayRate: (0.1 * 0.017), // size unit per frame (the 0.017 is for 1/60, since I'm doing 60 frames per second...)
+		decayRate: 0.1, // size unit per second
 		minSize: 10,
 		size: 50,
 		init: function () {
@@ -20,14 +55,15 @@
 			
 			plant.object = object;
 		},
-		decay: function () {
+		decay: function ( delta ) {
 			var plant = this,
-				dims = ["x", "y", "z"];
+				dims = ["x", "y", "z"],
+				rate = plant.decayRate * delta;
 			
 			_.each(dims, function (dim) {
 				var dimValue = plant.object.scale[dim];
 				if (plant.size * dimValue > plant.minSize) {
-					plant.object.scale[dim] = dimValue - plant.decayRate;
+					plant.object.scale[dim] = dimValue - rate;
 				}
 			});
 		}
@@ -39,20 +75,27 @@
 	Landscape.prototype = {
 		xSquares: 60,
 		ySquares: 60,
-		init: function () {
+		init: function (cb) {
 			var land = this,
 				geometry = new THREE.PlaneGeometry(600, 600, land.xSquares, land.ySquares),
 				material = new THREE.MeshLambertMaterial({
 					color: 0xCC0000
-				}),
-				object = new THREE.Mesh(geometry, material);
+				});
+				
 			
-			object.rotation.x = 30;
+			getHeightData("../assets/sf_elevation.jpg", 600, 600, function (heightData) {
+				for (var i=0; i < geometry.vertices.length; i++) {
+					geometry.vertices[i].z = heightData[i];
+				}
+				
+				var object = new THREE.Mesh(geometry, material);
 			
-			land.object = object;
-			land.createPositionMatrix();
-			
-			// Now everything is ready.
+				land.object = object;
+				cb.call(land, object);
+				
+				// land.createPositionMatrix();
+				// Now everything is ready.
+			});
 		},
 		createPositionMatrix: function () {
 			var land = this,
@@ -106,7 +149,8 @@
 		renderer = new THREE.WebGLRenderer(),
 		camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR),
 		
-		scene = new THREE.Scene();
+		scene = new THREE.Scene(),
+		clock = new THREE.Clock();
 	
 	scene.add(camera);
 	
@@ -120,20 +164,26 @@
 	var plant = new Plant();
 	scene.add(plant.object);
 	
-	var land = new Landscape();
-	scene.add(land.object);
+	var land = new Landscape(function (object) {
+		object.position.y -= 50;
+		object.rotation.x = -80 * Math.PI / 180;
+		object.rotation.z = 20 * Math.PI / 180;
+		scene.add(object);
+	});
 	
 	
 	// and add the lights
 	var pointLight = new THREE.PointLight(0xFFFFFF);
 	pointLight.position.x = 10;
-	pointLight.position.y = 50;
+	pointLight.position.y = 150;
 	pointLight.position.z = 130;
 	
 	scene.add(pointLight);
 	
 	var render = function () {
-		plant.decay();
+		var delta = clock.getDelta();
+		
+		plant.decay( delta );
 		plant.object.rotation.y += 0.1;
 		plant.object.rotation.x += 0.02;
 		renderer.render(scene, camera);
