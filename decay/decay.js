@@ -31,7 +31,7 @@
 				// combine the rgb channels, so 120,50,0 becomes 370. The maximum value would be
 				// 255*3, which is 765 which is maximum height.
 				var all = pix[i]+pix[i+1]+pix[i+2];
-				data[j++] = all/15;
+				data[j++] = all * (765/100); // This should return it as a percentage of the maximum value.
 			}
 			cb(data);
 		};
@@ -79,11 +79,16 @@
 		width: 200,
 		depth: 200,
 		unitToFoot: (52800/7500), // unit * <this_number> = 1 foot
-		
+		maximumHeight: 10, //feet
 		init: function (cb) {
-			var land = this;
+			var land = this,
+				imageHeight = 600,
+				imageWidth = 600,
+				
+				planeWidth = 7500,
+				planeHeight = 7500;
 			
-			getHeightData("../assets/sf_elevation.jpg", 600, 600, function (heightData) {
+			getHeightData("../assets/sf_elevation.jpg", imageWidth, imageHeight, function (heightData) {
 				var geometry = new THREE.PlaneGeometry( 7500, 7500, land.width - 1, land.depth - 1 );
 				
 				// This seems to be the best way to rotate something...as opposed to changing the position.rotation...
@@ -92,10 +97,17 @@
 				
 
 				// The height data is per pixel, but i don't actually have that many vertices, so I need to translate
-				var interval = Math.floor(heightData.length / geometry.vertices.length);
+				var interval = Math.round( heightData.length / geometry.vertices.length );
+				console.log("interval = " + interval);
 				
-				for (var i=0; i < geometry.vertices.length; i++) {
-					geometry.vertices[i].y = heightData[i*interval] * land.unitToFoot;
+				for (var i=0, avg=0; i < geometry.vertices.length; i++) {
+					// get the average of the height data within this block
+					avg = 0;
+					for (var q=0; q<interval;q++){
+						avg += heightData[(i*interval)-q];
+					}
+					avg /= interval;
+					geometry.vertices[i].y = avg/15;// * (land.maximumHeight * land.unitToFoot);
 				}
 				
 
@@ -158,31 +170,21 @@
 	
 	
 	// and add the lights
-	var pointLightMiddle = new THREE.PointLight(0x1a1a1a),
-		pointLightOutsideLeft = new THREE.PointLight(0xFFFFFF),
-		pointLightOutsideRight = new THREE.PointLight(0x1a1a1a),
+	var pointLight = new THREE.PointLight(0xFFFFFF),
 		ambientLight = new THREE.AmbientLight(0x202020);
 	
 	
-	pointLightMiddle.position.x = 0;
-	pointLightMiddle.position.z = 0;
+	pointLight.position.x = 0;
+	pointLight.position.z = 0;
+	pointLight.position.y = 2050;
 	
-	pointLightOutsideLeft.x = WIDTH/2;
-	pointLightOutsideLeft.z = 0;
-	
-	pointLightOutsideRight.x = -WIDTH/2;
-	pointLightOutsideRight.z = 0;
-	
-	$.each([pointLightMiddle, pointLightOutsideLeft, pointLightOutsideRight], function (i, light) {
-		light.position.y = 1050;
-		scene.add(light);
-	});
+	scene.add(pointLight);
 	scene.add(ambientLight);
 	
 	var render = function () {
 		var delta = clock.getDelta();
 		
-		//controls.update(delta);
+		controls.update(delta);
 		
 		plant.decay( delta );
 		plant.object.rotation.y += 0.1;
