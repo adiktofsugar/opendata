@@ -28,12 +28,15 @@
 				pix = imgd.data;
 		
 			for (j=0, i=0, n = pix.length; i < n; i += (4)) {
+				// combine the rgb channels, so 120,50,0 becomes 370. The maximum value would be
+				// 255*3, which is 765 which is maximum height.
 				var all = pix[i]+pix[i+1]+pix[i+2];
-				data[j++] = all/30;
+				data[j++] = all/15;
 			}
 			cb(data);
 		};
 	}
+	
 	
 	/**
 	 * Base plant class
@@ -73,66 +76,38 @@
 		this.init.apply(this, arguments);
 	};
 	Landscape.prototype = {
-		xSquares: 60,
-		ySquares: 60,
+		width: 200,
+		depth: 200,
+		unitToFoot: (52800/7500), // unit * <this_number> = 1 foot
+		
 		init: function (cb) {
-			var land = this,
-				geometry = new THREE.PlaneGeometry(600, 600, land.xSquares, land.ySquares),
-				material = new THREE.MeshLambertMaterial({
-					color: 0xCC0000
-				});
-				
+			var land = this;
 			
 			getHeightData("../assets/sf_elevation.jpg", 600, 600, function (heightData) {
+				var geometry = new THREE.PlaneGeometry( 7500, 7500, land.width - 1, land.depth - 1 );
+				
+				// This seems to be the best way to rotate something...as opposed to changing the position.rotation...
+				// This way recalculates the x and y positions.
+				geometry.applyMatrix( new THREE.Matrix4().makeRotationX( - Math.PI / 2 ) );
+				
+
+				// The height data is per pixel, but i don't actually have that many vertices, so I need to translate
+				var interval = Math.floor(heightData.length / geometry.vertices.length);
+				
 				for (var i=0; i < geometry.vertices.length; i++) {
-					geometry.vertices[i].z = heightData[i];
+					geometry.vertices[i].y = heightData[i*interval] * land.unitToFoot;
 				}
 				
-				var object = new THREE.Mesh(geometry, material);
-			
+
+				var object = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
+						color: 0xCC0000
+					}));
+				
 				land.object = object;
 				cb.call(land, object);
 				
-				// land.createPositionMatrix();
 				// Now everything is ready.
 			});
-		},
-		createPositionMatrix: function () {
-			var land = this,
-				geometry = land.object.geometry,
-				vertices = geometry.vertices,
-				positionMatrix = [],
-				x = 0,
-				y = 0;
-			
-			_.each(vertices, function (vertex, i) {
-				if (i > ((x+1) * land.xSquares)) {
-					x += 1;
-					y = 0;
-				}
-				
-				if (!positionMatrix[x]) {
-					positionMatrix[x] = [];
-				}
-				positionMatrix[x][y] = vertex;
-				
-				y += 1;
-			});
-			
-			land.positionMatrix = positionMatrix;
-		},
-		/**
-		* set height usage examples
-		   land.setHeight([30,30], 500);
-		   land.setHeight([60,30], 500);
-	   */
-		setHeight: function (point, height) {
-			var land = this;
-			if (!land.positionMatrix) {
-				land.createPositionMatrix();
-			}
-			// z is height because it's rotated 30 degrees around the x axis
-			land.positionMatrix[ point[0] ][ point[1] ].z = height;
 		}
 	};
 	
@@ -141,7 +116,7 @@
 		WIDTH = 600,
 		HEIGHT = 450,
 		
-		VIEW_ANGLE = 45,
+		VIEW_ANGLE = 110,
 		ASPECT = WIDTH/HEIGHT,
 		NEAR = 0.1,
 		FAR = 10000,
@@ -149,12 +124,24 @@
 		renderer = new THREE.WebGLRenderer(),
 		camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR),
 		
-		scene = new THREE.Scene(),
+		scene;
 		clock = new THREE.Clock();
 	
+	
+	camera.lookAt( new THREE.Vector3(0, 0, 0) );
+	
+	var controls = new THREE.FirstPersonControls( camera );
+
+	controls.movementSpeed = 1000;
+	controls.lookSpeed = 0.125;
+	controls.lookVertical = true;
+	
+	
+	scene = new THREE.Scene();
 	scene.add(camera);
 	
-	camera.position.z = 800;
+	camera.position.y = 500;
+	camera.position.z = 1500;
 	renderer.setSize(WIDTH, HEIGHT);
 	
 	container.appendChild(renderer.domElement);
@@ -166,22 +153,36 @@
 	
 	var land = new Landscape(function (object) {
 		object.position.y -= 50;
-		object.rotation.x = -80 * Math.PI / 180;
-		object.rotation.z = 20 * Math.PI / 180;
 		scene.add(object);
 	});
 	
 	
 	// and add the lights
-	var pointLight = new THREE.PointLight(0xFFFFFF);
-	pointLight.position.x = 10;
-	pointLight.position.y = 150;
-	pointLight.position.z = 130;
+	var pointLightMiddle = new THREE.PointLight(0x1a1a1a),
+		pointLightOutsideLeft = new THREE.PointLight(0xFFFFFF),
+		pointLightOutsideRight = new THREE.PointLight(0x1a1a1a),
+		ambientLight = new THREE.AmbientLight(0x202020);
 	
-	scene.add(pointLight);
+	
+	pointLightMiddle.position.x = 0;
+	pointLightMiddle.position.z = 0;
+	
+	pointLightOutsideLeft.x = WIDTH/2;
+	pointLightOutsideLeft.z = 0;
+	
+	pointLightOutsideRight.x = -WIDTH/2;
+	pointLightOutsideRight.z = 0;
+	
+	$.each([pointLightMiddle, pointLightOutsideLeft, pointLightOutsideRight], function (i, light) {
+		light.position.y = 1050;
+		scene.add(light);
+	});
+	scene.add(ambientLight);
 	
 	var render = function () {
 		var delta = clock.getDelta();
+		
+		//controls.update(delta);
 		
 		plant.decay( delta );
 		plant.object.rotation.y += 0.1;
@@ -191,4 +192,5 @@
 		requestAnimationFrame(render);
 	};
 	requestAnimationFrame(render);
+
 }());
