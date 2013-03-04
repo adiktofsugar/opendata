@@ -25,13 +25,23 @@
 			}
 		
 			var imgd = context.getImageData(0, 0, imgWidth, imgHeight),
-				pix = imgd.data;
+				pix = imgd.data,
+				pixIndex = 0,
+				data = [];
 		
-			for (j=0, i=0, n = pix.length; i < n; i += (4)) {
-				// combine the rgb channels, so 120,50,0 becomes 370. The maximum value would be
-				// 255*3, which is 765 which is maximum height.
-				var all = pix[i]+pix[i+1]+pix[i+2];
-				data[j++] = all * (765/100); // This should return it as a percentage of the maximum value.
+			for (var row = 0;row < imgHeight; row++) {
+				for (var col = 0; col<imgWidth; col++) {
+					var all = pix[pixIndex]+pix[pixIndex+1]+pix[pixIndex+2];
+					pixIndex += 4;
+					
+					// combine the rgb channels, so 120,50,0 becomes 370. The maximum value would be
+					// 255*3, which is 765 which is maximum height.
+					
+					
+					data[row] = data[row] || [];
+					data[row][col] = all / 765; // This should return it as a percentage of the maximum value.
+					
+				}
 			}
 			cb(data);
 		};
@@ -79,7 +89,7 @@
 		width: 200,
 		depth: 200,
 		unitToFoot: (52800/7500), // unit * <this_number> = 1 foot
-		maximumHeight: 10, //feet
+		maximumHeight: 100, //feet
 		init: function (cb) {
 			var land = this,
 				imageHeight = 600,
@@ -88,29 +98,47 @@
 				planeWidth = 7500,
 				planeHeight = 7500;
 			
+			// heightdata is in 2d array
 			getHeightData("../assets/sf_elevation.jpg", imageWidth, imageHeight, function (heightData) {
-				var geometry = new THREE.PlaneGeometry( 7500, 7500, land.width - 1, land.depth - 1 );
+				var geometry = new THREE.PlaneGeometry( 7500, 7500, land.width - 1, land.depth - 1 ),
+					scaleX = Math.ceil( imageWidth/land.width ),
+					scaleZ = Math.ceil( imageHeight/land.depth ),
+					
+					geoMatrix = [];
 				
 				// This seems to be the best way to rotate something...as opposed to changing the position.rotation...
 				// This way recalculates the x and y positions.
 				geometry.applyMatrix( new THREE.Matrix4().makeRotationX( - Math.PI / 2 ) );
 				
-
-				// The height data is per pixel, but i don't actually have that many vertices, so I need to translate
-				var interval = Math.round( heightData.length / geometry.vertices.length );
-				console.log("interval = " + interval);
-				
-				for (var i=0, avg=0; i < geometry.vertices.length; i++) {
-					// get the average of the height data within this block
-					avg = 0;
-					for (var q=0; q<interval;q++){
-						avg += heightData[(i*interval)-q];
+				var geoRow = 0,
+					geoCol = 0;
+				$.each(geometry.vertices, function (i, vertice) {
+					geoMatrix[geoRow] = geoMatrix[geoRow] || [];
+					geoMatrix[geoRow][geoCol] = vertice;
+					
+					geoCol += 1;
+					if (geoCol >= land.width) {
+						geoRow += 1;
+						geoCol = 0;
 					}
-					avg /= interval;
-					geometry.vertices[i].y = avg/15;// * (land.maximumHeight * land.unitToFoot);
+				});
+				
+				console.dir(heightData);
+				console.dir(geoMatrix);
+				
+				// Go through the heightData matrix and assign the y data to the vertice in the geometry
+				for (var row = 0; row < geoMatrix.length; row++) {
+					for (var col = 0; col < geoMatrix[row].length; col++) {
+						
+						var vertice = geoMatrix[ row ][ col ],
+							heightRow = row * scaleZ,
+							heightCol = col * scaleX,
+							height = heightData[ heightRow ][ heightCol ] * (land.maximumHeight * land.unitToFoot);
+						//console.log ("row = " + heightRow + ", col = " + heightCol);
+						vertice.y = height;
+					}
 				}
 				
-
 				var object = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
 						color: 0xCC0000
 					}));
@@ -170,7 +198,7 @@
 	
 	
 	// and add the lights
-	var pointLight = new THREE.PointLight(0xFFFFFF),
+	var pointLight = new THREE.PointLight(0xa0a0a0),
 		ambientLight = new THREE.AmbientLight(0x202020);
 	
 	
